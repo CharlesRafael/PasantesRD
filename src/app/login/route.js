@@ -7,6 +7,13 @@ import pool from '@/lib/db.js';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const TEST_EMAIL = 'test@mail';
+const TEST_PASSWORD = '1234';
+
+// Ajusta estos IDs si cambian en tu base
+const TEST_STUDENT_ID = 13; // ID de Test Student en `students`
+const TEST_COMPANY_ID = 1;  // ID de alguna empresa demo en `companies`
+
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -20,6 +27,25 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+
+    // 🧪 BYPASS DE DEMO: usuario hardcodeado en código
+    if (email === TEST_EMAIL && password === TEST_PASSWORD) {
+      console.log('✅ DEMO LOGIN BYPASS ACTIVADO');
+
+      const demoId = role === 'student' ? TEST_STUDENT_ID : TEST_COMPANY_ID;
+
+      return NextResponse.json(
+        {
+          exists: true,
+          role,     // 'student' o 'company'
+          id: demoId,
+          demoUser: true,
+        },
+        { status: 200 }
+      );
+    }
+
+    // 👉 Si no es el usuario de demo, usamos base de datos normal
 
     // Determinar tabla según el rol
     let tableName;
@@ -44,7 +70,6 @@ export async function POST(request) {
     console.log('📥 DB RESULT:', rows);
 
     if (!rows || rows.length === 0) {
-      // Mantenemos exists:false para que el frontend muestre el mensaje
       return NextResponse.json(
         { exists: false, message: 'Usuario no encontrado.' },
         { status: 200 }
@@ -53,7 +78,7 @@ export async function POST(request) {
 
     const user = rows[0];
 
-    // Comparar contraseña
+    // Comparar contraseña contra el hash guardado
     const passwordOk = await bcrypt.compare(password, user.password_hash || '');
 
     if (!passwordOk) {
@@ -63,21 +88,21 @@ export async function POST(request) {
       );
     }
 
-    // Login correcto
+    // Login correcto con base de datos
     return NextResponse.json(
       {
         exists: true,
-        role,        // 'student' o 'company'
-        id: user.id, // ID en la tabla
+        role,
+        id: user.id,
       },
       { status: 200 }
     );
   } catch (error) {
     console.error('💥 LOGIN API ERROR:', error);
-    // Te paso el mensaje para que lo veas en la pantalla de login
     return NextResponse.json(
       {
-        message: 'Internal Server Error: ' + (error?.message || 'Error desconocido'),
+        message:
+          'Internal Server Error: ' + (error?.message || 'Error desconocido'),
       },
       { status: 500 }
     );
