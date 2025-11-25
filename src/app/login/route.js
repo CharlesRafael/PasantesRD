@@ -1,84 +1,86 @@
 // src/app/api/login/route.js
-
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import pool from '../../lib/db';
+import pool from '@/lib/db';
 
-export const runtime = 'nodejs'; // asegura que corre en Node, no en Edge
+// Obligamos a que este endpoint corra en Node.js, no en Edge
+export const runtime = 'nodejs';
 
-export async function POST(req) {
+export async function POST(request) {
   try {
-    const body = await req.json();
+    const body = await request.json();
     const { email, password, role } = body;
 
-    console.log('📩 /api/login body:', body);
+    console.log('🟡 /api/login - Body recibido:', { email, role });
 
+    // Validación básica
     if (!email || !password || !role) {
       return NextResponse.json(
-        { message: 'Faltan datos: email, password o role.', exists: false },
+        { message: 'Email, contraseña y rol son obligatorios.' },
         { status: 400 }
       );
     }
 
-    // role viene desde el front como 'student' o 'company'
-    const isStudent = role === 'student';
-
-    const table = isStudent ? 'students' : 'companies';
-
-    // OJO: aquí usamos la columna correcta: password_hash
-    const query = `
-      SELECT id, email, password_hash
-      FROM ${table}
-      WHERE email = ?
-      LIMIT 1
-    `;
-    
-    console.log('🔍 Ejecutando query login en tabla:', table, 'email:', email);
-
-    const [rows] = await pool.execute(query, [email]);
-
-    if (!rows || rows.length === 0) {
-      console.log('❌ Usuario no encontrado en', table, 'con email', email);
-      // Importante: el front espera exists=false para mostrar mensaje
+    // Elegimos tabla según el rol
+    let query = '';
+    if (role === 'student') {
+      query = 'SELECT id, email, password_hash FROM students WHERE email = ? LIMIT 1';
+    } else if (role === 'company') {
+      query = 'SELECT id, email, password_hash FROM companies WHERE email = ? LIMIT 1';
+    } else {
       return NextResponse.json(
-        { exists: false, message: 'Usuario no encontrado.' },
-        { status: 200 }
+        { message: 'Rol inválido. Debe ser "student" o "company".' },
+        { status: 400 }
       );
     }
 
-    const user = rows[0];
+    const connection = await pool.getConnection();
+    try {
+      const [rows] = await connection.execute(query, [email]);
 
-    console.log('✅ Usuario encontrado, comparando contraseña...');
+      console.log('🟡 /api/login - Filas encontradas:', rows?.length);
 
-    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+      if (!rows || rows.length === 0) {
+        return NextResponse.json(
+          { exists: false, message: 'Usuario no encontrado.' },
+          { status: 404 }
+        );
+      }
 
-    if (!isPasswordValid) {
-      console.log('❌ Contraseña incorrecta para usuario', email);
-      return NextResponse.json(
-        { exists: false, message: 'Contraseña incorrecta.' },
-        { status: 200 }
-      );
-    }
+      const user = rows[0];
 
-    console.log('✅ Login correcto. ID:', user.id, 'role:', isStudent ? 'student' : 'company');
+      if (!user.password_hash) {
+        return NextResponse.json(
+          { exists: false, message: 'El usuario no tiene contraseña configurada.' },
+          { status: 500 }
+        );
+      }
 
-    // Lo que tu front espera:
-    // const { exists, role, id } = response.data;
-    return NextResponse.json(
-      {
+      const passwordOk = await bcrypt.compare(password, user.password_hash);
+
+      if (!passwordOk) {
+        return NextResponse.json(
+          { exists: false, message: 'Contraseña incorrecta.' },
+          { status: 401 }
+        );
+      }
+
+      // ✅ Login correcto
+      return NextResponse.json({
         exists: true,
-        role: isStudent ? 'student' : 'company',
+        role,
         id: user.id,
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error('💥 Error en /api/login:', error);
+      });
+    } finally {
+      connection.release();
+    }
+  } catch (err) {
+    console.error('💥 ERROR EN /api/login:', err);
+
     return NextResponse.json(
       {
-        message: 'Error interno en el servidor.',
-        error: error.message,
-        exists: false,
+        message: 'Internal server error en /api/login',
+        error: String(err?.message || err),
       },
       { status: 500 }
     );
