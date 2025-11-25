@@ -2,13 +2,12 @@ import { NextResponse } from 'next/server';
 import { 
   getCompanyLocations,
   updateCompanyLocations 
-} from '../../../../lib/companyModel';
+} from '@/lib/companyModel';
 
 const getCompanyIdFromRequest = async (request) => {
-  
   const email = request.headers.get('x-company-email');
   if (email) {
-    const { getCompanyProfileByEmail } = await import('../../../../lib/companyModel');
+    const { getCompanyProfileByEmail } = await import('@/lib/companyModel');
     const company = await getCompanyProfileByEmail(email);
     return company ? company.id : null;
   }
