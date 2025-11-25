@@ -1,86 +1,83 @@
 // src/app/api/login/route.js
 import { NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
-import pool from '@/lib/db';
+import bcrypt from 'bcrypt';
+import pool from '@/lib/db.js';
 
-// Obligamos a que este endpoint corra en Node.js, no en Edge
+// Forzamos Node.js runtime (bcrypt no funciona en edge)
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function POST(request) {
   try {
     const body = await request.json();
     const { email, password, role } = body;
 
-    console.log('🟡 /api/login - Body recibido:', { email, role });
+    console.log('🔐 LOGIN REQUEST:', { email, role });
 
-    // Validación básica
     if (!email || !password || !role) {
       return NextResponse.json(
-        { message: 'Email, contraseña y rol son obligatorios.' },
+        { message: 'Email, contraseña y rol son requeridos.' },
         { status: 400 }
       );
     }
 
-    // Elegimos tabla según el rol
-    let query = '';
+    // Determinar tabla según el rol
+    let tableName;
+
     if (role === 'student') {
-      query = 'SELECT id, email, password_hash FROM students WHERE email = ? LIMIT 1';
+      tableName = 'students';
     } else if (role === 'company') {
-      query = 'SELECT id, email, password_hash FROM companies WHERE email = ? LIMIT 1';
+      tableName = 'companies';
     } else {
       return NextResponse.json(
-        { message: 'Rol inválido. Debe ser "student" o "company".' },
+        { message: 'Rol inválido.' },
         { status: 400 }
       );
     }
 
-    const connection = await pool.getConnection();
-    try {
-      const [rows] = await connection.execute(query, [email]);
+    // Buscar usuario por email
+    const [rows] = await pool.execute(
+      `SELECT id, email, password_hash FROM ${tableName} WHERE email = ? LIMIT 1`,
+      [email]
+    );
 
-      console.log('🟡 /api/login - Filas encontradas:', rows?.length);
+    console.log('📥 DB RESULT:', rows);
 
-      if (!rows || rows.length === 0) {
-        return NextResponse.json(
-          { exists: false, message: 'Usuario no encontrado.' },
-          { status: 404 }
-        );
-      }
-
-      const user = rows[0];
-
-      if (!user.password_hash) {
-        return NextResponse.json(
-          { exists: false, message: 'El usuario no tiene contraseña configurada.' },
-          { status: 500 }
-        );
-      }
-
-      const passwordOk = await bcrypt.compare(password, user.password_hash);
-
-      if (!passwordOk) {
-        return NextResponse.json(
-          { exists: false, message: 'Contraseña incorrecta.' },
-          { status: 401 }
-        );
-      }
-
-      // ✅ Login correcto
-      return NextResponse.json({
-        exists: true,
-        role,
-        id: user.id,
-      });
-    } finally {
-      connection.release();
+    if (!rows || rows.length === 0) {
+      // Mantenemos exists:false para que el frontend muestre el mensaje
+      return NextResponse.json(
+        { exists: false, message: 'Usuario no encontrado.' },
+        { status: 200 }
+      );
     }
-  } catch (err) {
-    console.error('💥 ERROR EN /api/login:', err);
 
+    const user = rows[0];
+
+    // Comparar contraseña
+    const passwordOk = await bcrypt.compare(password, user.password_hash || '');
+
+    if (!passwordOk) {
+      return NextResponse.json(
+        { exists: false, message: 'Contraseña incorrecta.' },
+        { status: 200 }
+      );
+    }
+
+    // Login correcto
     return NextResponse.json(
       {
-        message: 'Internal server error en /api/login',
-        error: String(err?.message || err),
+        exists: true,
+        role,        // 'student' o 'company'
+        id: user.id, // ID en la tabla
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error('💥 LOGIN API ERROR:', error);
+    // Te paso el mensaje para que lo veas en la pantalla de login
+    return NextResponse.json(
+      {
+        message: 'Internal Server Error: ' + (error?.message || 'Error desconocido'),
       },
       { status: 500 }
     );
