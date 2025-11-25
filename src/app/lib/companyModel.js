@@ -175,3 +175,77 @@ export const getCompanyStatistics = async (companyId) => {
     past_internships: 0
   };
 };
+
+// Check if a company email already exists
+export const checkCompanyEmailExists = async (email) => {
+  const query = 'SELECT id FROM companies WHERE email = ?';
+  const [rows] = await pool.execute(query, [email]);
+  return rows.length > 0;
+};
+
+// Register a new company
+export const registerCompany = async (data) => {
+  const [
+    companyName,
+    industry,
+    companySize,
+    description,
+    website,
+    contactName,
+    contactPosition,
+    email,
+    phone,
+    passwordHash,
+    companyLogo
+  ] = data;
+
+  const query = `
+    INSERT INTO companies (
+      company_name,
+      industry,
+      company_size,
+      description,
+      website,
+      contact_name,
+      contact_position,
+      email,
+      phone,
+      password_hash,
+      company_logo
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  const [result] = await pool.execute(query, [
+    companyName,
+    industry,
+    companySize,
+    description,
+    website,
+    contactName,
+    contactPosition,
+    email,
+    phone,
+    passwordHash,
+    companyLogo
+  ]);
+
+  return {
+    id: result.insertId,
+    createdAt: new Date().toISOString()
+  };
+};
+
+// Get company profile by email (used in benefits & locations APIs)
+export const getCompanyProfileByEmail = async (email) => {
+  const query = `
+    SELECT 
+      id, company_name, industry, company_size, description, website, 
+      contact_name, contact_position, email, phone, company_logo,
+      founded_year, verified, premium_partner,
+      created_at, updated_at
+    FROM companies 
+    WHERE email = ?
+  `;
+  const [rows] = await pool.execute(query, [email]);
+  return rows[0] || null;
+};
