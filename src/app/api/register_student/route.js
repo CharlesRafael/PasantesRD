@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getStudentById, updateStudent } from '../../../../lib/studentModel';
+import { getStudentById, updateStudent } from '@/lib/studentModel';
 
 // GET - Fetch student profile
 export async function GET(req, { params }) {
@@ -86,7 +86,6 @@ export async function PATCH(req, { params }) {
     const mergedData = {
       ...currentStudent,
       ...partialData,
-     
       skills: partialData.skills !== undefined ? partialData.skills : currentStudent.skills,
       languages: partialData.languages !== undefined ? partialData.languages : currentStudent.languages
     };
